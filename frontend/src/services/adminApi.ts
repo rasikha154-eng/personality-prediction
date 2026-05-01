@@ -47,6 +47,10 @@ class AdminService {
 
   private async makeRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
+    console.log('🔗 Admin API Request:', endpoint);
+    const token = localStorage.getItem('access_token');
+    console.log('🔑 Token present:', !!token);
+    
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -55,8 +59,10 @@ class AdminService {
       },
     });
 
+    console.log('📊 Response status:', response.status, response.statusText);
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Network error' }));
+      console.log('❌ API Error:', error);
       throw new Error((error as any).error || `HTTP ${response.status}`);
     }
 
@@ -64,10 +70,12 @@ class AdminService {
   }
 
   async getStats(): Promise<AdminStats> {
+    console.log('📊 getStats called');
     return this.makeRequest<AdminStats>('/admin/stats');
   }
 
   async getUsers(search: string = '', page: number = 1, pageSize: number = 10): Promise<AdminUsersResponse> {
+    console.log('📥 getUsers called with page=' + page + ', pageSize=' + pageSize + ', search="' + search + '"');
     const params = new URLSearchParams();
     if (search) params.set('search', search);
     params.set('page', String(page));

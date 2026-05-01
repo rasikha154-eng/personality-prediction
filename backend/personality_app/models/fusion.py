@@ -52,16 +52,16 @@ def fuse_all(text_result: Dict[str, Any], voice_result: Dict[str, Any], face_res
             print(f"   📝 Text {trait}: {score:.3f} (weight: {weights['text']})")
             
         if voice_result and trait in voice_result and isinstance(voice_result[trait], (int, float)):
-            # Voice results are already 0-1 scale
-            score = voice_result[trait]
+            # Voice results are in 0-100 scale (percentage)
+            score = voice_result[trait] / 100.0 if voice_result[trait] > 1 else voice_result[trait]
             trait_scores.append(score)
             trait_weights.append(weights['voice'])
             modality_contributions['voice'] = score
             print(f"   🎙️ Voice {trait}: {score:.3f} (weight: {weights['voice']})")
             
         if face_result and trait in face_result and isinstance(face_result[trait], (int, float)):
-            # Face results are 0-1 scale
-            score = face_result[trait]
+            # Face results are in 0-100 scale (percentage)
+            score = face_result[trait] / 100.0 if face_result[trait] > 1 else face_result[trait]
             trait_scores.append(score)
             trait_weights.append(weights['face'])
             modality_contributions['face'] = score

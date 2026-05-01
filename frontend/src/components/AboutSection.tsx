@@ -1,119 +1,314 @@
-import { Card } from '@/components/ui/card';
-import { Brain, Cpu, Shield, Award, Users, TrendingUp } from 'lucide-react';
+import { useEffect, useRef, useState } from "react";
+import { Brain, Shield, Award } from "lucide-react";
 
-const AboutSection = () => {
-  const features = [
-    {
-      icon: Brain,
-      title: 'Advanced AI Models',
-      description: 'State-of-the-art machine learning algorithms analyze multiple personality dimensions'
-    },
-    {
-      icon: Shield,
-      title: 'Privacy First',
-      description: 'Your data is encrypted and never shared. Complete privacy and security guaranteed'
-    },
-    {
-      icon: Award,
-      title: 'Scientific Accuracy',
-      description: 'Based on validated psychological frameworks including Big Five and MBTI'
-    }
-  ];
+const features = [
+  {
+    icon: Brain,
+    title: "Advanced AI Models",
+    description: "State-of-the-art machine learning algorithms analyze multiple personality dimensions",
+    color: { bg: "#EEEDFE", stroke: "#7F77DD", icon: "#534AB7" },
+  },
+  {
+    icon: Shield,
+    title: "Privacy First",
+    description: "Your data is encrypted and never shared. Complete privacy and security guaranteed",
+    color: { bg: "#E1F5EE", stroke: "#1D9E75", icon: "#0F6E56" },
+  },
+  {
+    icon: Award,
+    title: "Scientific Accuracy",
+    description: "Based on validated psychological frameworks including Big Five and MBTI",
+    color: { bg: "#FAEEDA", stroke: "#BA7517", icon: "#854F0B" },
+  },
+];
 
-  const stats = [
-    { number: '95%', label: 'Accuracy Rate' },
-    { number: '10K+', label: 'Users Analyzed' },
-    { number: '3', label: 'Analysis Methods' },
-    { number: '24/7', label: 'Availability' }
-  ];
+const stats = [
+  { number: "95%", label: "Accuracy Rate" },
+  { number: "10K+", label: "Users Analyzed" },
+  { number: "3", label: "Analysis Methods" },
+  { number: "24/7", label: "Availability" },
+];
+
+const validations = [
+  "Tested against established psychological assessments",
+  "95% correlation with professional evaluations",
+  "Continuous learning and model improvement",
+  "Peer-reviewed research methodology",
+];
+
+const scienceItems = [
+  {
+    label: "Text Analysis",
+    desc: "Natural language processing examines writing patterns, word choice, and emotional expression.",
+    color: "#7F77DD",
+  },
+  {
+    label: "Voice Analysis",
+    desc: "Advanced audio processing analyzes speech patterns, tone, pace, and emotional inflections.",
+    color: "#1D9E75",
+  },
+  {
+    label: "Facial Analysis",
+    desc: "Computer vision reads micro-expressions and facial features correlating with personality.",
+    color: "#BA7517",
+  },
+];
+
+function useCountUp(target: number, duration = 1200, suffix = "") {
+  const [value, setValue] = useState("0" + suffix);
+  const hasRun = useRef(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !hasRun.current) {
+          hasRun.current = true;
+          const start = performance.now();
+          const tick = (now: number) => {
+            const p = Math.min((now - start) / duration, 1);
+            const ease = 1 - Math.pow(1 - p, 3);
+            setValue(Math.round(ease * target) + suffix);
+            if (p < 1) requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        }
+      },
+      { threshold: 0.5 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [target, duration, suffix]);
+
+  return { value, ref };
+}
+
+function StatCard({ number, label }: { number: string; label: string }) {
+  const isPercent = number.endsWith("%");
+  const isK = number.endsWith("K+");
+  const raw = parseInt(number.replace(/\D/g, ""));
+  const suffix = isPercent ? "%" : isK ? "K+" : number.replace(/\d/g, "");
+  const { value, ref } = useCountUp(raw, 1400, suffix);
 
   return (
-    <section id="about" className="py-20 px-4">
-      <div className="container mx-auto max-w-6xl">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
-            Why Choose <span className="text-accent">AI Personality?</span>
+    <div ref={ref} style={{ textAlign: "center" }}>
+      <div
+        style={{
+          fontSize: "2.2rem",
+          fontWeight: 700,
+          color: "#a78bfa",
+          marginBottom: 4,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {value}
+      </div>
+      <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 13 }}>{label}</div>
+    </div>
+  );
+}
+
+export default function AboutSection() {
+  const [visibleCards, setVisibleCards] = useState<boolean[]>([false, false, false]);
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  useEffect(() => {
+    const observers = cardRefs.current.map((el, i) => {
+      if (!el) return null;
+      const obs = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting) {
+            setTimeout(() => {
+              setVisibleCards((prev) => {
+                const next = [...prev];
+                next[i] = true;
+                return next;
+              });
+            }, i * 120);
+          }
+        },
+        { threshold: 0.15 }
+      );
+      obs.observe(el);
+      return obs;
+    });
+    return () => observers.forEach((o) => o?.disconnect());
+  }, []);
+
+  return (
+    <section id="about" style={{ padding: "5rem 1rem" }}>
+      <div style={{ maxWidth: 900, margin: "0 auto" }}>
+
+        {/* Header */}
+        <div style={{ textAlign: "center", marginBottom: "3.5rem" }}>
+          <h2 style={{ fontSize: "2.5rem", fontWeight: 700, color: "#fff", marginBottom: "1rem" }}>
+            Why Choose{" "}
+            <span style={{ color: "#a78bfa" }}>AI Personality?</span>
           </h2>
-          <p className="text-xl text-gray-300 max-w-3xl mx-auto font-lora">
-            Our cutting-edge AI combines multiple analysis methods to provide the most comprehensive 
-            personality assessment available today.
+          <p style={{ color: "rgba(255,255,255,0.55)", fontSize: "1.05rem", maxWidth: 560, margin: "0 auto", lineHeight: 1.7 }}>
+            Our cutting-edge AI combines multiple analysis methods to provide the most comprehensive personality assessment available today.
           </p>
         </div>
 
-        {/* Features Grid */}
-        <div className="grid md:grid-cols-3 gap-8 mb-16">
-          {features.map((feature, index) => (
-            <Card key={index} className="glass-card p-8 text-center hover:scale-105 transition-transform">
-              <div className="bg-gradient-to-r from-primary to-accent rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-6">
-                <feature.icon className="h-8 w-8 text-white" />
+        {/* Feature Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: "2.5rem" }}>
+          {features.map((f, i) => {
+            const Icon = f.icon;
+            return (
+              <div
+                key={i}
+                ref={(el) => { cardRefs.current[i] = el; }}
+                style={{
+                  background: "rgba(255,255,255,0.04)",
+                  border: `0.5px solid rgba(255,255,255,0.09)`,
+                  borderRadius: 16,
+                  padding: "28px 20px",
+                  textAlign: "center",
+                  opacity: visibleCards[i] ? 1 : 0,
+                  transform: visibleCards[i] ? "translateY(0)" : "translateY(24px)",
+                  transition: "opacity 0.5s ease, transform 0.5s ease",
+                  backdropFilter: "blur(8px)",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.border = `0.5px solid ${f.color.stroke}`;
+                  (e.currentTarget as HTMLDivElement).style.transform = "translateY(-4px)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.border = "0.5px solid rgba(255,255,255,0.09)";
+                  (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)";
+                }}
+              >
+                <div
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: "50%",
+                    background: f.color.bg,
+                    border: `1px solid ${f.color.stroke}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    margin: "0 auto 14px",
+                  }}
+                >
+                  <Icon size={22} color={f.color.icon} />
+                </div>
+                <h3 style={{ fontSize: 15, fontWeight: 600, color: "#fff", marginBottom: 8 }}>{f.title}</h3>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", lineHeight: 1.6, margin: 0 }}>{f.description}</p>
               </div>
-              <h3 className="text-xl font-bold text-white mb-4">{feature.title}</h3>
-              <p className="text-gray-300 font-lora">{feature.description}</p>
-            </Card>
-          ))}
+            );
+          })}
         </div>
 
-        {/* Stats */}
-        <Card className="glass-card p-8 mb-16">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            {stats.map((stat, index) => (
-              <div key={index}>
-                <div className="text-3xl md:text-4xl font-bold text-accent mb-2">{stat.number}</div>
-                <div className="text-gray-300 font-lora">{stat.label}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
+        {/* Stats Bar */}
+        <div
+          style={{
+            background: "rgba(255,255,255,0.04)",
+            border: "0.5px solid rgba(255,255,255,0.09)",
+            borderRadius: 16,
+            padding: "28px 32px",
+            marginBottom: "2.5rem",
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: 16,
+            backdropFilter: "blur(8px)",
+          }}
+        >
+          {stats.map((s, i) => <StatCard key={i} number={s.number} label={s.label} />)}
+        </div>
 
-        {/* Science Section */}
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
+        {/* Science + Validation */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+
+          {/* Science */}
           <div>
-            <h3 className="text-3xl font-bold text-white mb-6">The Science Behind It</h3>
-            <div className="space-y-4 font-lora text-gray-300">
-              <p>
-                Our AI personality predictor uses a multi-modal approach, analyzing three distinct 
-                data sources to create a comprehensive personality profile.
-              </p>
-              <p>
-                <strong className="text-accent">Text Analysis:</strong> Natural language processing 
-                examines writing patterns, word choice, and emotional expression to identify personality traits.
-              </p>
-              <p>
-                <strong className="text-accent">Voice Analysis:</strong> Advanced audio processing 
-                analyzes speech patterns, tone, pace, and emotional inflections.
-              </p>
-              <p>
-                <strong className="text-accent">Facial Analysis:</strong> Computer vision technology 
-                reads micro-expressions and facial features that correlate with personality dimensions.
-              </p>
+            <h3 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff", marginBottom: "1.2rem" }}>
+              The Science Behind It
+            </h3>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", lineHeight: 1.7, marginBottom: "1.2rem" }}>
+              Our AI uses a multi-modal approach, analyzing three distinct data sources to create a comprehensive personality profile.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {scienceItems.map((item, i) => (
+                <div
+                  key={i}
+                  style={{
+                    background: "rgba(255,255,255,0.03)",
+                    border: `0.5px solid rgba(255,255,255,0.07)`,
+                    borderLeft: `2.5px solid ${item.color}`,
+                    borderRadius: "0 10px 10px 0",
+                    padding: "12px 14px",
+                    transition: "background 0.2s",
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.06)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.03)"; }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 600, color: item.color }}>{item.label}: </span>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", lineHeight: 1.6 }}>{item.desc}</span>
+                </div>
+              ))}
             </div>
           </div>
 
-          <Card className="glass-card p-8">
-            <h4 className="text-xl font-bold text-white mb-6">Validation & Accuracy</h4>
-            <div className="space-y-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                <span className="text-gray-300">Tested against established psychological assessments</span>
-              </div>
-              <div className="flex items-center space-x-3">
-                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                <span className="text-gray-300">95% correlation with professional evaluations</span>
-              </div>
-              <div className="flex items-center space-x-3">
-                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                <span className="text-gray-300">Continuous learning and model improvement</span>
-              </div>
-              <div className="flex items-center space-x-3">
-                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                <span className="text-gray-300">Peer-reviewed research methodology</span>
-              </div>
+          {/* Validation */}
+          <div
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "0.5px solid rgba(255,255,255,0.09)",
+              borderRadius: 16,
+              padding: "24px 20px",
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            <h4 style={{ fontSize: 16, fontWeight: 600, color: "#fff", marginBottom: "1.2rem" }}>
+              Validation & Accuracy
+            </h4>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {validations.map((v, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    opacity: 0,
+                    animation: `fadeUp 0.4s ease ${0.1 + i * 0.1}s forwards`,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: "50%",
+                      background: "#E1F5EE",
+                      border: "1px solid #1D9E75",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      marginTop: 1,
+                    }}
+                  >
+                    <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                      <polyline points="1.5,4.5 3.5,6.5 7.5,2.5" stroke="#0F6E56" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", lineHeight: 1.6 }}>{v}</span>
+                </div>
+              ))}
             </div>
-          </Card>
+          </div>
         </div>
       </div>
+
+      <style>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </section>
   );
-};
-
-export default AboutSection;
+}

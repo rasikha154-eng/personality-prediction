@@ -671,6 +671,20 @@ const TestInterface = () => {
       console.log("Camera stopped and state reset");
     }
   };
+  const getEmotionColor = (emotion: string) => {
+  switch (emotion) {
+    case "happy":
+      return "text-green-400";
+    case "sad":
+      return "text-blue-400";
+    case "angry":
+      return "text-red-400";
+    case "disgust":
+      return "text-yellow-400";
+    default:
+      return "text-white";
+  }
+};
 
   const startExpressionSequence = () => {
     let expressionIndex = 0;
@@ -1019,9 +1033,9 @@ const TestInterface = () => {
                               <span className="text-gray-300">
                                 Detected Emotion:
                               </span>
-                              <span className="text-white font-semibold capitalize">
-                                {voiceResults.detected_emotion || "Unknown"}
-                              </span>
+                              <span className={`font-semibold capitalize ${getEmotionColor(voiceResults.detected_emotion)}`}>
+  {voiceResults.detected_emotion || "Unknown"}
+</span>
                             </div>
                             {voiceResults.emotion_confidence && (
                               <div className="flex items-center justify-between">
@@ -1045,35 +1059,33 @@ const TestInterface = () => {
                           Personality Scores
                         </h4>
                         <div className="space-y-3">
-                          {Object.entries(voiceResults).map(
-                            ([trait, score]) => {
-                              if (
-                                typeof score === "number" &&
-                                trait !== "emotion_confidence"
-                              ) {
-                                return (
-                                  <div
-                                    key={trait}
-                                    className="flex items-center justify-between"
-                                  >
-                                    <span className="text-gray-300 capitalize">
-                                      {trait.replace("_", " ")}
-                                    </span>
-                                    <div className="flex items-center space-x-2">
-                                      <Progress
-                                        value={score * 100}
-                                        className="w-20 h-2"
-                                      />
-                                      <span className="text-white font-semibold min-w-[3rem]">
-                                        {(score * 100).toFixed(1)}%
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              return null;
-                            }
-                          )}
+                          {Object.entries(voiceResults).map(([trait, score]) => {
+  if (
+    typeof score === "number" &&
+    trait !== "emotion_confidence"
+  ) {
+    return (
+      <div
+        key={trait}
+        className="flex items-center justify-between"
+      >
+        <span className="text-gray-300 capitalize">
+          {trait.replace("_", " ")}
+        </span>
+        <div className="flex items-center space-x-2">
+          <Progress
+            value={score} // ✅ FIXED
+            className="w-20 h-2"
+          />
+          <span className="text-white font-semibold min-w-[3rem]">
+            {score}% {/* ✅ FIXED */}
+          </span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+})}
                         </div>
                       </div>
                     </div>

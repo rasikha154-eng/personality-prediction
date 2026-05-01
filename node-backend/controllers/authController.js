@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import pool from '../db.js';
+import db from '../db.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -24,13 +24,13 @@ export const register = async (req, res) => {
     }
 
     // Check duplicates
-    const [existingUsers] = await pool.execute(
+    const existingUsers = await db.all(
       'SELECT id FROM users WHERE username = ? OR email = ?',
       [username, email]
     );
     if (existingUsers.length > 0) {
-      const [byUsername] = await pool.execute('SELECT id FROM users WHERE username = ?', [username]);
-      if (byUsername.length > 0) return res.status(400).json({ error: 'Username already exists' });
+      const byUsername = await db.get('SELECT id FROM users WHERE username = ?', [username]);
+      if (byUsername) return res.status(400).json({ error: 'Username already exists' });
       return res.status(400).json({ error: 'Email already registered' });
     }
 
@@ -38,12 +38,12 @@ export const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Insert user
-    const [result] = await pool.execute(
+    const result = await db.run(
       'INSERT INTO users (username, email, password, is_admin) VALUES (?, ?, ?, ?)',
       [username, email, hashedPassword, 0]
     );
 
-    const userId = result.insertId;
+    const userId = result.lastID;
     const token = jwt.sign(
       { id: userId, username, email, is_admin: false },
       JWT_SECRET,
@@ -70,7 +70,7 @@ export const login = async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    const [rows] = await pool.execute('SELECT * FROM users WHERE email = ?', [email]);
+    const rows = await db.all('SELECT * FROM users WHERE email = ?', [email]);
     if (rows.length === 0) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
@@ -107,12 +107,12 @@ export const login = async (req, res) => {
 // ── GET CURRENT USER ─────────────────────────────────────────────────────────
 export const me = async (req, res) => {
   try {
-    const [rows] = await pool.execute(
+    const user = await db.get(
       'SELECT id, username, email, is_admin, created_at FROM users WHERE id = ?',
       [req.user.id]
     );
-    if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    return res.json({ user: rows[0] });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    return res.json({ user });
   } catch (err) {
     console.error('Me error:', err);
     return res.status(500).json({ error: err.message });

@@ -27,6 +27,13 @@ resampy>=0.4.0
 # Computer vision for facial analysis
 opencv-python>=4.8.0
 
+# YOLO object detection (Ultralytics)
+ultralytics>=8.0.0
+
+# FastAPI for YOLO backend
+fastapi>=0.100.0
+uvicorn>=0.23.0
+
 # Additional packages (add these if needed later)
 # nltk>=3.8.0
 # textblob>=0.17.0

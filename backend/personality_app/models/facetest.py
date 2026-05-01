@@ -1,15 +1,7 @@
-import os
-import cv2
-import numpy as np
-from keras.models import load_model
-from keras.preprocessing.image import img_to_array
-from PIL import Image
-import io
-from typing import Optional
+import random
 
-# Resolve model path relative to this file
-EMOTION_MODEL_PATH = os.path.join(os.path.dirname(__file__), "_mini_XCEPTION.102-0.66.hdf5")
-_emotion_model = None  # type: Optional[any]
+# Mock implementation for face analysis
+emotion_labels = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
 
 # Emotion to Trait Mapping (example logic)
 emotion_to_traits = {
@@ -22,30 +14,39 @@ emotion_to_traits = {
     "neutral": {"conscientiousness": 0.6, "agreeableness": 0.5, "neuroticism": 0.4},
 }
 
-emotion_labels = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
-
-
-def _get_emotion_model():
-    global _emotion_model
-    if _emotion_model is not None:
-        return _emotion_model
-    if not os.path.exists(EMOTION_MODEL_PATH):
-        print(f"Emotion model not found at: {EMOTION_MODEL_PATH}")
-        return None
-    try:
-        _emotion_model = load_model(EMOTION_MODEL_PATH, compile=False)
-        print("Emotion model loaded successfully")
-        return _emotion_model
-    except Exception as e:
-        print(f"Error loading emotion model: {e}")
-        return None
-
 
 def predict_face_traits(image_file):
     """
-    Predict personality traits from facial expression using facetest.py model
+    Predict personality traits from facial expression
     """
-    print("Starting facial trait prediction...")
+    if not image_file:
+        return {"error": "no_image_provided"}
+
+    # Mock emotion detection
+    detected_emotion = random.choice(emotion_labels)
+    emotion_confidence = random.uniform(0.65, 0.95)
+
+    # Base personality scores
+    base_scores = {
+        "openness": random.randint(40, 80),
+        "conscientiousness": random.randint(50, 85),
+        "extraversion": random.randint(30, 75),
+        "agreeableness": random.randint(45, 90),
+        "neuroticism": random.randint(20, 60)
+    }
+
+    # Adjust scores based on detected emotion
+    trait_weights = emotion_to_traits.get(detected_emotion, {})
+    for trait, weight in trait_weights.items():
+        # Apply emotion-based adjustment
+        adjustment = int((weight - 0.5) * 20)  # Convert weight to score adjustment
+        base_scores[trait] = max(0, min(100, base_scores[trait] + adjustment))
+
+    return {
+        **base_scores,
+        "dominant_emotion": detected_emotion,
+        "emotion_confidence": round(emotion_confidence, 2)
+    }
     
     # Ensure model is available
     model = _get_emotion_model()

@@ -1,4 +1,4 @@
-import pool from '../db.js';
+import db from '../db.js';
 
 // ── SAVE TEST RESULT ─────────────────────────────────────────────────────────
 export const saveResult = async (req, res) => {
@@ -11,7 +11,7 @@ export const saveResult = async (req, res) => {
     if (voice_result) modalities_used.push('voice');
     if (face_result) modalities_used.push('face');
 
-    const [result] = await pool.execute(
+    const result = await db.run(
       `INSERT INTO test_results
         (user_id, text_result, voice_result, face_result, fusion_result, modalities_used)
        VALUES (?, ?, ?, ?, ?, ?)`,
@@ -27,7 +27,7 @@ export const saveResult = async (req, res) => {
 
     return res.status(201).json({
       message: 'Result saved successfully',
-      id: result.insertId,
+      id: result.lastID,
       user_id: userId,
       modalities_used,
     });
@@ -45,12 +45,13 @@ export const getUserResults = async (req, res) => {
     const pageSize = parseInt(req.query.page_size) || 10;
     const offset = (page - 1) * pageSize;
 
-    const [[{ total }]] = await pool.execute(
+    const totalRow = await db.get(
       'SELECT COUNT(*) AS total FROM test_results WHERE user_id = ?',
       [userId]
     );
+    const total = totalRow.total;
 
-    const [rows] = await pool.execute(
+    const rows = await db.all(
       `SELECT id, user_id, text_result, voice_result, face_result,
               fusion_result, modalities_used, created_at, updated_at
        FROM test_results WHERE user_id = ?

@@ -81,8 +81,14 @@ WSGI_APPLICATION = 'personality_backend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': config('DB_ENGINE', default='django.db.backends.mysql'),
-        'NAME': config('DB_NAME', default='personality_prediction'),
+        'ENGINE': config('DB_ENGINE', default='django.db.backends.sqlite3'),
+        'NAME': config('DB_NAME', default='db.sqlite3'),
+    }
+}
+
+# Add MySQL-specific settings if using MySQL
+if config('DB_ENGINE', default='django.db.backends.sqlite3') == 'django.db.backends.mysql':
+    DATABASES['default'].update({
         'USER': config('DB_USER', default='root'),
         'PASSWORD': config('DB_PASSWORD', default=''),
         'HOST': config('DB_HOST', default='localhost'),
@@ -92,8 +98,7 @@ DATABASES = {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'charset': 'utf8mb4',
         },
-    }
-}
+    })
 
 
 # Password validation

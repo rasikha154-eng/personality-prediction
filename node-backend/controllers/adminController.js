@@ -1,47 +1,55 @@
-import pool from '../db.js';
+import db from '../db.js';
 
 // ── GET ALL USERS (admin only) ───────────────────────────────────────────────
 export const getAllUsers = async (req, res) => {
   try {
-    const search = req.query.search || '';
     const page = parseInt(req.query.page) || 1;
     const pageSize = parseInt(req.query.page_size) || 10;
     const offset = (page - 1) * pageSize;
 
-    let countQuery = 'SELECT COUNT(*) AS total FROM users';
-    let dataQuery = `
+    console.log(`\n📋 getAllUsers: page=${page}, pageSize=${pageSize}, offset=${offset}`);
+
+    // Get total count
+    const countSql = 'SELECT COUNT(*) AS total FROM users';
+    const totalRow = await db.get(countSql);
+    const total = totalRow.total;
+    console.log(`✅ Total users: ${total}`);
+
+    // Get users with pagination - using parameters for LIMIT/OFFSET
+    const dataSql = `
       SELECT u.id, u.username, u.email, u.is_admin, u.is_active, u.created_at,
              COUNT(t.id) AS total_tests
       FROM users u
       LEFT JOIN test_results t ON t.user_id = u.id
+      GROUP BY u.id
+      ORDER BY u.created_at DESC
+      LIMIT ? OFFSET ?
     `;
-    const params = [];
-    const countParams = [];
+    
+    console.log('Data SQL:', dataSql);
+    console.log('Parameters:', [pageSize, offset]);
+    
+    const users = await db.all(dataSql, [pageSize, offset]);
+    console.log(`✅ Fetched ${users.length} users`);
 
-    if (search) {
-      const like = `%${search}%`;
-      countQuery += ' WHERE username LIKE ? OR email LIKE ?';
-      dataQuery += ' WHERE (u.username LIKE ? OR u.email LIKE ?)';
-      params.push(like, like);
-      countParams.push(like, like);
-    }
-
-    dataQuery += ' GROUP BY u.id ORDER BY u.created_at DESC LIMIT ? OFFSET ?';
-    params.push(pageSize, offset);
-
-    const [[{ total }]] = await pool.execute(countQuery, countParams);
-    const [users] = await pool.execute(dataQuery, params);
-
-    return res.json({
-      users: users.map(u => ({ ...u, is_admin: !!u.is_admin, is_active: !!u.is_active })),
+    res.json({
+      users: users.map(u => ({ 
+        id: u.id,
+        username: u.username,
+        email: u.email,
+        is_admin: !!u.is_admin,
+        is_active: !!u.is_active,
+        created_at: u.created_at,
+        total_tests: u.total_tests || 0
+      })),
       total,
       page,
       page_size: pageSize,
       pages: Math.ceil(total / pageSize),
     });
   } catch (err) {
-    console.error('Get all users error:', err);
-    return res.status(500).json({ error: err.message });
+    console.error('❌ Get all users error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 };
 
@@ -50,19 +58,18 @@ export const getUserDetails = async (req, res) => {
   try {
     const userId = parseInt(req.params.userId);
 
-    const [userRows] = await pool.execute(
+    const user = await db.get(
       'SELECT id, username, email, is_admin, is_active, created_at FROM users WHERE id = ?',
       [userId]
     );
-    if (userRows.length === 0) {
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const user = userRows[0];
     user.is_admin = !!user.is_admin;
     user.is_active = !!user.is_active;
 
-    const [results] = await pool.execute(
+    const results = await db.all(
       `SELECT id, user_id, text_result, voice_result, face_result,
               fusion_result, modalities_used, created_at, updated_at
        FROM test_results WHERE user_id = ?
@@ -94,8 +101,9 @@ export const getAllResults = async (req, res) => {
     const pageSize = parseInt(req.query.page_size) || 20;
     const offset = (page - 1) * pageSize;
 
-    const [[{ total }]] = await pool.execute('SELECT COUNT(*) AS total FROM test_results');
-    const [rows] = await pool.execute(
+    const totalRow = await db.get('SELECT COUNT(*) AS total FROM test_results');
+    const total = totalRow.total;
+    const rows = await db.all(
       `SELECT t.id, t.user_id, u.username, u.email,
               t.text_result, t.voice_result, t.face_result,
               t.fusion_result, t.modalities_used, t.created_at
@@ -121,14 +129,18 @@ export const getAllResults = async (req, res) => {
 // ── ADMIN STATS ───────────────────────────────────────────────────────────────
 export const getStats = async (req, res) => {
   try {
-    const [[{ total_users }]] = await pool.execute('SELECT COUNT(*) AS total_users FROM users WHERE is_admin = 0');
-    const [[{ total_tests }]] = await pool.execute('SELECT COUNT(*) AS total_tests FROM test_results');
-    const [[{ tests_today }]] = await pool.execute(
-      'SELECT COUNT(*) AS tests_today FROM test_results WHERE DATE(created_at) = CURDATE()'
+    const totalUsersRow = await db.get('SELECT COUNT(*) AS total_users FROM users WHERE is_admin = 0');
+    const total_users = totalUsersRow.total_users;
+    const totalTestsRow = await db.get('SELECT COUNT(*) AS total_tests FROM test_results');
+    const total_tests = totalTestsRow.total_tests;
+    const testsTodayRow = await db.get(
+      "SELECT COUNT(*) AS tests_today FROM test_results WHERE date(created_at) = date('now')"
     );
-    const [[{ users_today }]] = await pool.execute(
-      'SELECT COUNT(*) AS users_today FROM users WHERE DATE(created_at) = CURDATE()'
+    const tests_today = testsTodayRow.tests_today;
+    const usersTodayRow = await db.get(
+      "SELECT COUNT(*) AS users_today FROM users WHERE date(created_at) = date('now')"
     );
+    const users_today = usersTodayRow.users_today;
 
     return res.json({ total_users, total_tests, tests_today, users_today });
   } catch (err) {

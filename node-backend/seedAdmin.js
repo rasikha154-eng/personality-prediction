@@ -1,32 +1,21 @@
 import bcrypt from 'bcryptjs';
-import mysql from 'mysql2/promise';
-import dotenv from 'dotenv';
-dotenv.config();
+import db from './db.js';
 
 async function seedAdmin() {
-  const conn = await mysql.createConnection({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'personality',
-    charset: 'utf8mb4',
-  });
-
   const adminEmail = 'admin@personality.com';
   const adminPassword = 'Admin@1234';
   const adminUsername = 'admin';
 
-  const [existing] = await conn.execute('SELECT id FROM users WHERE email = ?', [adminEmail]);
-  if (existing.length > 0) {
+  const existing = await db.get('SELECT id FROM users WHERE email = ?', [adminEmail]);
+  if (existing) {
     console.log('ℹ️  Admin user already exists.');
     console.log(`📧  Email: ${adminEmail}`);
     console.log(`🔑  Password: ${adminPassword}`);
-    await conn.end();
     return;
   }
 
   const hashed = await bcrypt.hash(adminPassword, 12);
-  await conn.execute(
+  await db.run(
     'INSERT INTO users (username, email, password, is_admin) VALUES (?, ?, ?, ?)',
     [adminUsername, adminEmail, hashed, 1]
   );
@@ -36,8 +25,6 @@ async function seedAdmin() {
   console.log(`📧  Email:    ${adminEmail}`);
   console.log(`🔑  Password: ${adminPassword}`);
   console.log('══════════════════════════════\n');
-
-  await conn.end();
 }
 
 seedAdmin().catch(err => {
