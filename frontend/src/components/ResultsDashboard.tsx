@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
+import jsPDF from "jspdf";
 
 const ResultsDashboard = () => {
   const { toast } = useToast();
@@ -344,17 +345,177 @@ const ResultsDashboard = () => {
 
   const handleDownloadPDF = () => {
     toast({
-      title: "Downloading PDF Report",
-      description: "Your personality analysis report is being generated...",
+      title: "Generating PDF Report",
+      description: "Please wait while your report is being created...",
     });
 
-    // Simulate PDF generation
-    setTimeout(() => {
+    try {
+      // Create PDF document
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      
+      // Header
+      doc.setFontSize(24);
+      doc.setTextColor(59, 130, 246); // Blue color
+      doc.text("AI Personality Analysis Report", pageWidth / 2, 25, { align: "center" });
+      
+      // Date
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(`Generated on: ${new Date().toLocaleDateString()}`, pageWidth / 2, 35, { align: "center" });
+      
+      // Personality Type Section
+      doc.setFontSize(16);
+      doc.setTextColor(0);
+      doc.text("Your Personality Type", 20, 50);
+      
+      doc.setFontSize(14);
+      doc.setTextColor(59, 130, 246);
+      doc.text(`${personalityType.type} - ${personalityType.name}`, 20, 60);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(80);
+      const descLines = doc.splitTextToSize(personalityType.description, 170);
+      doc.text(descLines, 20, 70);
+      
+      let yPos = 70 + (descLines.length * 5) + 15;
+      
+      // Big Five Traits Section
+      doc.setFontSize(16);
+      doc.setTextColor(0);
+      doc.text("Big Five Personality Traits", 20, yPos);
+      yPos += 15;
+      
+      // Draw trait bars
+      bigFiveTraits.forEach((trait, index) => {
+        const traitName = trait.name.charAt(0).toUpperCase() + trait.name.slice(1);
+        const score = trait.score;
+        
+        doc.setFontSize(12);
+        doc.setTextColor(0);
+        doc.text(traitName, 20, yPos);
+        
+        // Draw progress bar background
+        doc.setFillColor(230, 230, 230);
+        doc.rect(60, yPos - 5, 100, 8, "F");
+        
+        // Draw progress bar
+        doc.setFillColor(59, 130, 246);
+        doc.rect(60, yPos - 5, score, 8, "F");
+        
+        // Draw score text
+        doc.setFontSize(10);
+        doc.setTextColor(80);
+        doc.text(`${score}%`, 165, yPos);
+        
+        yPos += 15;
+      });
+      
+      yPos += 10;
+      
+      // Modality Results Section
+      if (fusionResults || facialResults || textResults || voiceResults) {
+        doc.setFontSize(16);
+        doc.setTextColor(0);
+        doc.text("Detailed Analysis Results", 20, yPos);
+        yPos += 15;
+        
+        // Text Results
+        if (textResults && Object.keys(textResults).length > 0) {
+          doc.setFontSize(12);
+          doc.setTextColor(59, 130, 246);
+          doc.text("Text Analysis", 20, yPos);
+          yPos += 8;
+          
+          doc.setFontSize(9);
+          doc.setTextColor(60);
+          const textTraits = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'];
+          textTraits.forEach(trait => {
+            if (textResults[trait] !== undefined) {
+              doc.text(`${trait}: ${textResults[trait]}%`, 25, yPos);
+              yPos += 6;
+            }
+          });
+          yPos += 5;
+        }
+        
+        // Voice Results
+        if (voiceResults && Object.keys(voiceResults).length > 0) {
+          doc.setFontSize(12);
+          doc.setTextColor(59, 130, 246);
+          doc.text("Voice Analysis", 20, yPos);
+          yPos += 8;
+          
+          doc.setFontSize(9);
+          doc.setTextColor(60);
+          const voiceTraits = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'];
+          voiceTraits.forEach(trait => {
+            if (voiceResults[trait] !== undefined) {
+              doc.text(`${trait}: ${voiceResults[trait]}%`, 25, yPos);
+              yPos += 6;
+            }
+          });
+          yPos += 5;
+        }
+        
+        // Face Results
+        if (facialResults && Object.keys(facialResults).length > 0) {
+          doc.setFontSize(12);
+          doc.setTextColor(59, 130, 246);
+          doc.text("Facial Analysis", 20, yPos);
+          yPos += 8;
+          
+          doc.setFontSize(9);
+          doc.setTextColor(60);
+          const faceTraits = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'];
+          faceTraits.forEach(trait => {
+            if (facialResults[trait] !== undefined) {
+              doc.text(`${trait}: ${facialResults[trait]}%`, 25, yPos);
+              yPos += 6;
+            }
+          });
+          yPos += 5;
+        }
+        
+        // Fusion Results
+        if (fusionResults && Object.keys(fusionResults).length > 0) {
+          doc.setFontSize(12);
+          doc.setTextColor(59, 130, 246);
+          doc.text("Multimodal Fusion", 20, yPos);
+          yPos += 8;
+          
+          doc.setFontSize(9);
+          doc.setTextColor(60);
+          const fusionTraits = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'];
+          fusionTraits.forEach(trait => {
+            if (fusionResults[trait] !== undefined) {
+              doc.text(`${trait}: ${fusionResults[trait]}%`, 25, yPos);
+              yPos += 6;
+            }
+          });
+        }
+      }
+      
+      // Footer
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text("Generated by AI Personality Predictor", pageWidth / 2, 285, { align: "center" });
+      
+      // Save the PDF
+      doc.save("personality-analysis-report.pdf");
+      
       toast({
         title: "✅ Download Complete",
-        description: "Your PDF report has been saved to your downloads folder.",
+        description: "Your PDF report has been downloaded.",
       });
-    }, 2000);
+    } catch (error) {
+      console.error("PDF generation error:", error);
+      toast({
+        title: "❌ Download Failed",
+        description: "There was an error generating the PDF. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleShare = () => {
