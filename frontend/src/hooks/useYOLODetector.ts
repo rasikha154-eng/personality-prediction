@@ -1,10 +1,4 @@
-/**
- * YOLO Object Detection Hook
- * 
- * Handles real-time object detection using YOLOv8 backend
- */
-
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 
 export interface BoundingBox {
   x: number;
@@ -25,83 +19,89 @@ export interface YOLOStats {
   lastDetectionTime: number;
 }
 
-const API_URL = 'http://localhost:8001';
+interface UseYOLODetectorOptions {
+  apiUrl?: string;
+  detectionInterval?: number;
+  onDetection?: (detections: Detection[]) => void;
+}
 
-export function useYOLODetector() {
-  const [isProcessing, setIsProcessing] = useState(false);
+export function useYOLODetector({
+  apiUrl = 'http://localhost:8001',
+  detectionInterval = 300,
+  onDetection,
+}: UseYOLODetectorOptions = {}) {
   const [detections, setDetections] = useState<Detection[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<YOLOStats>({
     fps: 0,
     processingTime: 0,
     lastDetectionTime: 0,
   });
-  const [error, setError] = useState<string | null>(null);
 
-  // FPS tracking
+  const isProcessingRef = useRef(false);
+  const lastFrameTime = useRef(Date.now());
   const frameTimesRef = useRef<number[]>([]);
-  const lastProcessTimeRef = useRef(0);
 
-  const detectFrame = useCallback(async (imageBase64: string): Promise<Detection[]> => {
-    const now = performance.now();
-    
-    // Throttle requests to avoid overwhelming the backend
-    if (now - lastProcessTimeRef.current < 200) {
-      return detections;
-    }
-    
-    lastProcessTimeRef.current = now;
-    setIsProcessing(true);
-    setError(null);
+  const detectFrame = useCallback(async (base64Data: string): Promise<Detection[]> => {
+    if (isProcessingRef.current) return [];
+    isProcessingRef.current = true;
 
     try {
-      const response = await fetch(`${API_URL}/detect`, {
+      const formData = new FormData();
+      formData.append("image", base64Data);
+
+      // ✅ Sirf /detect — sahi endpoint
+      const response = await fetch(`${apiUrl}/detect`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ image: imageBase64 }),
+        body: formData,
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        console.error('YOLO API error:', response.status);
+        return [];
       }
 
       const data = await response.json();
-      
-      // Update FPS
-      const currentTime = performance.now();
-      frameTimesRef.current.push(currentTime);
-      
-      // Keep only last 10 frame times for FPS calculation
-      if (frameTimesRef.current.length > 10) {
-        frameTimesRef.current.shift();
-      }
-      
-      // Calculate FPS
+      const newDetections: Detection[] = data.detections || [];
+
+      // FPS calculate karo
+      const now = performance.now();
+      frameTimesRef.current.push(now);
+      if (frameTimesRef.current.length > 10) frameTimesRef.current.shift();
+
       let fps = 0;
       if (frameTimesRef.current.length >= 2) {
-        const timeDiff = frameTimesRef.current[frameTimesRef.current.length - 1] - 
-                        frameTimesRef.current[0];
+        const timeDiff = frameTimesRef.current[frameTimesRef.current.length - 1] - frameTimesRef.current[0];
         fps = ((frameTimesRef.current.length - 1) / timeDiff) * 1000;
       }
 
+      setDetections(newDetections);
       setStats({
         fps: Math.round(fps),
         processingTime: data.processing_time_ms || 0,
-        lastDetectionTime: currentTime,
+        lastDetectionTime: now,
       });
 
-      setDetections(data.detections || []);
-      return data.detections || [];
+      onDetection?.(newDetections);
+      return newDetections;
+
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Detection failed';
-      setError(errorMessage);
-      console.error('YOLO detection error:', err);
+      console.error('YOLO fetch error:', err);
+      setError('YOLO API unreachable');
       return [];
     } finally {
-      setIsProcessing(false);
+      isProcessingRef.current = false;
     }
-  }, [detections]);
+  }, [apiUrl, onDetection]);
+
+  const startDetection = useCallback(() => setIsRunning(true), []);
+
+  const stopDetection = useCallback(() => {
+    setIsRunning(false);
+    setDetections([]);
+    frameTimesRef.current = [];
+  }, []);
 
   const clearDetections = useCallback(() => {
     setDetections([]);
@@ -109,11 +109,13 @@ export function useYOLODetector() {
   }, []);
 
   return {
-    isProcessing,
     detections,
-    stats,
+    isRunning,
     error,
+    stats,
     detectFrame,
+    startDetection,
+    stopDetection,
     clearDetections,
   };
 }

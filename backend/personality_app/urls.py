@@ -4,7 +4,8 @@ from .views import (
     predict_face_only, 
     predict_voice_only,
     predict_multimodal,
-    health_check
+    health_check,
+    submit_feedback,
 )
 from .auth_views import (
     register,
@@ -23,6 +24,9 @@ urlpatterns = [
     path('predict/multimodal/', predict_multimodal, name='predict_multimodal'),
     path('predict/face/', predict_face_only, name='predict_face'),
     path('predict/voice/', predict_voice_only, name='predict_voice'),
+    
+    # Feedback endpoint
+    path('feedback/', submit_feedback, name='submit_feedback'),
     
     # Authentication endpoints
     path('auth/register/', register, name='register'),

@@ -1,0 +1,112 @@
+[
+  {
+    "timestamp": "2026-05-02T20:21:00.795078",
+    "feedback": "accurate",
+    "modality": "fusion",
+    "results": {
+      "openness": 0.504,
+      "conscientiousness": 0.618,
+      "extraversion": 0.537,
+      "agreeableness": 0.551,
+      "neuroticism": 0.475,
+      "modality_scores": {
+        "text": {
+          "openness": 41,
+          "conscientiousness": 74,
+          "extraversion": 61,
+          "agreeableness": 45,
+          "neuroticism": 55
+        },
+        "voice": {
+          "openness": 50,
+          "conscientiousness": 45,
+          "extraversion": 30,
+          "agreeableness": 55,
+          "neuroticism": 80,
+          "detected_emotion": "fear",
+          "emotion_confidence": 0.6
+        },
+        "face": {
+          "openness": 56.25,
+          "conscientiousness": 61.25,
+          "extraversion": 58.75,
+          "agreeableness": 61.25,
+          "neuroticism": 30,
+          "dominant_emotion": "neutral",
+          "emotion_confidence": 0.93,
+          "dominant_expression": "sad",
+          "expressions_analyzed": [
+            "neutral",
+            "smile",
+            "surprised",
+            "sad"
+          ],
+          "total_expressions": 4
+        }
+      },
+      "confidence": 1,
+      "modalities_used": 3,
+      "fusion_method": "weighted_average",
+      "weights_used": {
+        "text": 0.3,
+        "voice": 0.2,
+        "face": 0.5
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-02T20:21:03.432284",
+    "feedback": "accurate",
+    "modality": "fusion",
+    "results": {
+      "openness": 0.504,
+      "conscientiousness": 0.618,
+      "extraversion": 0.537,
+      "agreeableness": 0.551,
+      "neuroticism": 0.475,
+      "modality_scores": {
+        "text": {
+          "openness": 41,
+          "conscientiousness": 74,
+          "extraversion": 61,
+          "agreeableness": 45,
+          "neuroticism": 55
+        },
+        "voice": {
+          "openness": 50,
+          "conscientiousness": 45,
+          "extraversion": 30,
+          "agreeableness": 55,
+          "neuroticism": 80,
+          "detected_emotion": "fear",
+          "emotion_confidence": 0.6
+        },
+        "face": {
+          "openness": 56.25,
+          "conscientiousness": 61.25,
+          "extraversion": 58.75,
+          "agreeableness": 61.25,
+          "neuroticism": 30,
+          "dominant_emotion": "neutral",
+          "emotion_confidence": 0.93,
+          "dominant_expression": "sad",
+          "expressions_analyzed": [
+            "neutral",
+            "smile",
+            "surprised",
+            "sad"
+          ],
+          "total_expressions": 4
+        }
+      },
+      "confidence": 1,
+      "modalities_used": 3,
+      "fusion_method": "weighted_average",
+      "weights_used": {
+        "text": 0.3,
+        "voice": 0.2,
+        "face": 0.5
+      }
+    }
+  }
+]

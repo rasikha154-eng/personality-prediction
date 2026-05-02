@@ -1,8 +1,8 @@
 """
-YOLO Object Detection FastAPI Backend
+YOLO Object Detection FastAPI Backend with Facial Emotion Recognition
 
 Requirements:
-    pip install fastapi uvicorn python-multipart opencv-python ultralytics numpy
+    pip install fastapi uvicorn python-multipart opencv-python ultralytics numpy keras pillow
 
 Run:
     uvicorn yolo_api:app --host 0.0.0.0 --port 8001 --reload
@@ -11,13 +11,25 @@ Run:
 import base64
 import io
 import time
+import os
+import sys
 import numpy as np
 import cv2
-from fastapi import FastAPI, File
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from ultralytics import YOLO
 from typing import List, Optional
+
+# Add backend to path to import facetest
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    import facial_emotion
+    FACIAL_EMOTION_AVAILABLE = True
+    print("✅ Facial emotion detection available")
+except Exception as e:
+    print(f"⚠️ Facial emotion model not available: {e}")
+    FACIAL_EMOTION_AVAILABLE = False
 
 
 # Initialize FastAPI app
@@ -53,10 +65,26 @@ class Detection(BaseModel):
     bbox: BoundingBox
 
 
+class EmotionDetection(BaseModel):
+    label: str
+    confidence: float
+    bbox: BoundingBox
+    emotion: Optional[str] = None
+    emotion_confidence: Optional[float] = None
+    emotion_scores: Optional[dict] = None
+
+
 class DetectionResponse(BaseModel):
     detections: List[Detection]
     processing_time_ms: float
     model: str
+
+
+class EmotionDetectionResponse(BaseModel):
+    detections: List[EmotionDetection]
+    processing_time_ms: float
+    model: str
+    facial_model: Optional[str] = None
 
 
 # COCO class names
@@ -96,10 +124,133 @@ def encode_image_to_base64(img: np.ndarray) -> str:
     return base64.b64encode(buffer).decode('utf-8')
 
 
+def detect_emotion_in_face_region(img: np.ndarray, x: int, y: int, w: int, h: int) -> dict:
+    """
+    Detect emotion in a face region using the facial emotion model.
+    
+    Args:
+        img: Full image
+        x, y, w, h: Face bounding box coordinates and dimensions
+    
+    Returns:
+        Dictionary with emotion, confidence, and scores
+    """
+    if not FACIAL_EMOTION_AVAILABLE:
+        return None
+    
+    try:
+        result = facial_emotion.detect_emotion_in_region(img, x, y, w, h)
+        return result
+        
+    except Exception as e:
+        print(f"Error detecting emotion: {e}")
+        return None
+
+
+@app.post("/detect-with-emotions", response_model=EmotionDetectionResponse)
+async def detect_with_emotions(image: str = File(description="Base64 encoded image")):
+    """
+    Detect objects with YOLO and facial emotions using emotion model.
+    Specifically designed for person detection with facial emotion recognition.
+    
+    Args:
+        image: Base64 encoded image
+    
+    Returns:
+        List of detections with emotions (for "person" class)
+    """
+    start_time = time.time()
+    
+    try:
+        # Decode image
+        img = decode_base64_image(image)
+        
+        if img is None:
+            return EmotionDetectionResponse(
+                detections=[],
+                processing_time_ms=0,
+                model="yolov8n.pt",
+                facial_model="_mini_XCEPTION.102-0.66" if FACIAL_EMOTION_AVAILABLE else None
+            )
+        
+        # Run YOLO detection
+        results = MODEL(img, verbose=False)
+        
+        # Parse results
+        detections = []
+        
+        for result in results:
+            for box in result.boxes:
+                conf = float(box.conf[0])
+                
+                # Filter by confidence threshold
+                if conf < 0.25:
+                    continue
+                
+                # Get class and bbox
+                cls = int(box.cls[0])
+                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                
+                # Convert to x, y, width, height format
+                x, y = int(x1), int(y1)
+                width, height = int(x2 - x1), int(y2 - y1)
+                
+                # Get class name
+                label = CLASS_NAMES[cls] if cls < len(CLASS_NAMES) else f"class_{cls}"
+                
+                # If it's a person, try to detect emotion
+                emotion_data = None
+                if label == "person" and FACIAL_EMOTION_AVAILABLE:
+                    emotion_data = detect_emotion_in_face_region(img, x, y, width, height)
+                
+                detection = EmotionDetection(
+                    label=label,
+                    confidence=conf,
+                    bbox=BoundingBox(x=x, y=y, width=width, height=height)
+                )
+                
+                if emotion_data:
+                    detection.emotion = emotion_data.get("emotion")
+                    detection.emotion_confidence = emotion_data.get("emotion_confidence")
+                    detection.emotion_scores = emotion_data.get("emotion_scores")
+                
+                detections.append(detection)
+        
+        processing_time = (time.time() - start_time) * 1000
+        
+        return EmotionDetectionResponse(
+            detections=detections,
+            processing_time_ms=round(processing_time, 2),
+            model="yolov8n.pt",
+            facial_model="_mini_XCEPTION.102-0.66" if FACIAL_EMOTION_AVAILABLE else None
+        )
+        
+    except Exception as e:
+        print(f"Error processing frame with emotions: {e}")
+        import traceback
+        traceback.print_exc()
+        return EmotionDetectionResponse(
+            detections=[],
+            processing_time_ms=0,
+            model="yolov8n.pt",
+            facial_model="_mini_XCEPTION.102-0.66" if FACIAL_EMOTION_AVAILABLE else None
+        )
+
+
+
 @app.get("/")
 async def root():
     """Health check endpoint."""
-    return {"status": "ok", "model": "yolov8n.pt"}
+    return {
+        "status": "ok",
+        "model": "yolov8n.pt",
+        "facial_model": "_mini_XCEPTION.102-0.66" if FACIAL_EMOTION_AVAILABLE else None,
+        "endpoints": [
+            "/detect - YOLO object detection only",
+            "/detect-with-annotated - YOLO with visual annotations",
+            "/detect-with-emotions - YOLO + facial emotion recognition"
+        ]
+    }
 
 
 @app.post("/detect", response_model=DetectionResponse)

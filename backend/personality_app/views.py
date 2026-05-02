@@ -16,7 +16,7 @@ from .models.facetest import predict_face_traits
 from .models.fusion import fuse_all, average_face_expressions
 import uuid
 import json
-
+import os
 
 def _with_cors(resp: Response) -> Response:
     resp["Access-Control-Allow-Origin"] = "*"
@@ -196,4 +196,57 @@ def health_check(request):
         }
     }))
 
-
+@api_view(['POST', 'OPTIONS'])
+def submit_feedback(request):
+    if request.method == 'OPTIONS':
+        return _with_cors(Response(status=status.HTTP_204_NO_CONTENT))
+    
+    try:
+        feedback = request.data.get('feedback')  # 'accurate' ya 'inaccurate'
+        modality = request.data.get('modality')  # 'text', 'voice', 'face', 'fusion'
+        results  = request.data.get('results')   # actual scores
+        
+        # Simple file mein save karo
+        import json
+        from datetime import datetime
+        
+        feedback_path = os.path.join(
+            os.path.dirname(__file__), 
+            'models', 'feedback_log.json'
+        )
+        
+        # Existing feedback load karo
+        if os.path.exists(feedback_path):
+            with open(feedback_path, 'r') as f:
+                all_feedback = json.load(f)
+        else:
+            all_feedback = []
+        
+        # Naya entry add karo
+        all_feedback.append({
+            "timestamp": datetime.now().isoformat(),
+            "feedback":  feedback,
+            "modality":  modality,
+            "results":   results,
+        })
+        
+        # Save karo
+        with open(feedback_path, 'w') as f:
+            json.dump(all_feedback, f, indent=2)
+        
+        # Accuracy stats calculate karo
+        total    = len(all_feedback)
+        accurate = sum(1 for f in all_feedback if f['feedback'] == 'accurate')
+        accuracy = round((accurate / total) * 100, 1) if total > 0 else 0
+        
+        return _with_cors(Response({
+            'message': 'Feedback saved',
+            'total_feedback': total,
+            'accuracy_rate': accuracy
+        }))
+        
+    except Exception as e:
+        return _with_cors(Response(
+            {'error': str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        ))

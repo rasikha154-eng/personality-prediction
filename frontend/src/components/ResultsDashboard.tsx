@@ -19,10 +19,29 @@ import jsPDF from "jspdf";
 
 const ResultsDashboard = () => {
   const { toast } = useToast();
-  const [facialResults, setFacialResults] = useState<Record<
-    string,
-    any
-  > | null>(null);
+
+  const handleFeedback = async (isAccurate: boolean) => {
+    try {
+      const response = await fetch("http://localhost:8000/api/feedback/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          feedback: isAccurate ? "accurate" : "inaccurate",
+          modality: "fusion",
+          results:  fusionResults ?? {},
+        }),
+      });
+      const data = await response.json();
+      toast({
+        title: isAccurate ? "✅ Shukriya!" : "📝 Feedback mila!",
+        description: `Total accuracy: ${data.accuracy_rate}% (${data.total_feedback} responses)`,
+      });
+    } catch {
+      toast({ title: "❌ Feedback Failed", variant: "destructive" });
+    }
+  };
+
+  const [facialResults, setFacialResults] = useState<Record<string, any> | null>(null);
   const [textResults, setTextResults] = useState<any>(null);
   const [textInput, setTextInput] = useState<string>("");
   const [voiceResults, setVoiceResults] = useState<any>(null);
@@ -219,11 +238,12 @@ const ResultsDashboard = () => {
         }
       }
 
-      const textInputRaw = localStorage.getItem("tv_text_results");
-      if (textInputRaw) {
-        setTextInput(textInputRaw);
-        console.log("Text input loaded:", textInputRaw);
-      } else {
+      const textInputRaw = localStorage.getItem("tv_text_analysis");
+       if (textInputRaw) {
+  const parsed = JSON.parse(textInputRaw);
+  setTextInput(JSON.stringify(parsed));
+  console.log("Text input loaded:", textInputRaw);
+}else {
         console.log("No text input found in localStorage");
       }
 
@@ -817,7 +837,26 @@ const ResultsDashboard = () => {
             </div>
           </div>
         )}
-
+{fusionResults && (
+  <div className="text-center mb-8">
+    <p className="text-gray-300 mb-4 text-lg">Was this analysis accurate?</p>
+    <div className="flex gap-4 justify-center">
+      <Button
+        onClick={() => handleFeedback(true)}
+        className="bg-green-500 hover:bg-green-600 text-white px-8"
+      >
+        👍 Yes, Accurate
+      </Button>
+      <Button
+        onClick={() => handleFeedback(false)}
+        variant="outline"
+        className="border-red-400 text-red-400 hover:bg-red-400 hover:text-white px-8"
+      >
+        👎 Not Accurate
+      </Button>
+    </div>
+  </div>
+)}
         {/* Action Buttons - Centered horizontally above footer */}
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mt-12 mb-8">
           <Button

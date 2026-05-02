@@ -1,51 +1,66 @@
 /**
- * YOLO Video Detection Component
+ * YOLO Video Component with Facial Emotion Recognition
  * 
- * Displays webcam video with real-time object detection overlay
+ * Displays real-time webcam video with YOLO object detection
+ * and facial emotion recognition overlays
  */
 
-import { useEffect, useRef, useCallback, useState } from 'react';
-import { useYOLODetector, Detection } from '@/hooks/useYOLODetector';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useYOLODetector, Detection } from '../hooks/useYOLODetector';
 
 interface YOLOVideoProps {
-  isActive: boolean;
-  onDetection?: (detections: Detection[]) => void;
-  detectionInterval?: number;
+  onDetectionsUpdate?: (detections: Detection[]) => void;
+  includeEmotions?: boolean;
   showStats?: boolean;
-  showOverlay?: boolean;
+  detectionInterval?: number;
 }
 
-const COLORS = [
-  '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
-  '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
-];
-
-function getColorForClass(className: string): string {
-  let hash = 0;
-  for (let i = 0; i < className.length; i++) {
-    hash = className.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return COLORS[Math.abs(hash) % COLORS.length];
-}
-
-export function YOLOVideo({
-  isActive,
-  onDetection,
-  detectionInterval = 300,
+export const YOLOVideo: React.FC<YOLOVideoProps> = ({
+  onDetectionsUpdate,
+  includeEmotions = true,
   showStats = true,
-  showOverlay = true,
-}: YOLOVideoProps) {
+  detectionInterval = 300,
+}) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [isDetecting, setIsDetecting] = useState(false);
+  
+  const { detections, stats, error, detectFrame } = useYOLODetector(includeEmotions);
 
-  const [isCameraReady, setIsCameraReady] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
+  // Color mapping for classes
+  const classColors: { [key: string]: [number, number, number] } = {
+    person: [0, 255, 0],
+    car: [255, 0, 0],
+    dog: [0, 0, 255],
+    cat: [255, 255, 0],
+    bus: [255, 0, 255],
+    truck: [0, 255, 255],
+  };
 
-  const { isProcessing, detections, stats, error, detectFrame, clearDetections } = useYOLODetector();
+  const getClassColor = (label: string): [number, number, number] => {
+    return classColors[label] || [
+      Math.abs(label.charCodeAt(0) * 73) % 256,
+      Math.abs(label.charCodeAt(1) * 97) % 256,
+      Math.abs(label.charCodeAt(2) * 127) % 256,
+    ];
+  };
 
-  // Start camera
+  // Emotion to color mapping
+  const emotionColors: { [key: string]: [number, number, number] } = {
+    happy: [0, 255, 0],
+    sad: [0, 0, 255],
+    angry: [255, 0, 0],
+    surprise: [255, 255, 0],
+    fear: [128, 0, 255],
+    disgust: [0, 128, 0],
+    neutral: [128, 128, 128],
+  };
+
+  const getEmotionColor = (emotion: string): [number, number, number] => {
+    return emotionColors[emotion.toLowerCase()] || [128, 128, 128];
+  };
+
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -54,34 +69,26 @@ export function YOLOVideo({
           height: { ideal: 720 },
           facingMode: 'user',
         },
-        audio: false,
       });
 
-      streamRef.current = stream;
-      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setIsCameraReady(true);
-        setCameraError(null);
+        setCameraActive(true);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to access camera';
-      setCameraError(message);
-      console.error('Camera error:', err);
+      console.error('Error accessing camera:', err);
+      setCameraActive(false);
     }
   }, []);
 
-  // Stop camera
   const stopCamera = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach((track) => track.stop());
+      setCameraActive(false);
     }
-    setIsCameraReady(false);
   }, []);
 
-  // Capture frame as base64
   const captureFrame = useCallback((): string | null => {
     if (!videoRef.current || !canvasRef.current) return null;
 
@@ -91,181 +98,184 @@ export function YOLOVideo({
 
     if (!ctx) return null;
 
-    // Set canvas size to match video
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
 
-    // Draw video frame to canvas
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Return as base64
     return canvas.toDataURL('image/jpeg', 0.8);
   }, []);
 
-  // Draw detections on canvas
-  const drawDetections = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    if (!showOverlay || detections.length === 0) return;
+  const drawDetections = useCallback(
+    (canvas: HTMLCanvasElement, detections: Detection[]) => {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
-    detections.forEach(detection => {
-      const { label, confidence, bbox } = detection;
-      const color = getColorForClass(label);
+      // Clear previous drawings (optional - can leave for effect)
+      // ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw bounding box
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 3;
-      ctx.strokeRect(bbox.x, bbox.y, bbox.width, bbox.height);
+      detections.forEach((det) => {
+        const { x, y, width, height } = det.bbox;
+        const [r, g, b] = getClassColor(det.label);
+        const color = `rgb(${r}, ${g}, ${b})`;
 
-      // Draw label background
-      const labelText = `${label} ${(confidence * 100).toFixed(0)}%`;
-      ctx.font = 'bold 14px Inter, system-ui, sans-serif';
-      const textMetrics = ctx.measureText(labelText);
-      const padding = 6;
-      const labelHeight = 20;
+        // Draw bounding box
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x, y, width, height);
 
-      ctx.fillStyle = color;
-      ctx.fillRect(bbox.x, bbox.y - labelHeight - padding, textMetrics.width + padding * 2, labelHeight + padding);
+        // Draw label background
+        const label = `${det.label} ${(det.confidence * 100).toFixed(1)}%`;
+        const fontSize = 14;
+        ctx.font = `${fontSize}px Arial`;
+        const textMetrics = ctx.measureText(label);
+        const textHeight = fontSize + 4;
 
-      // Draw label text
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillText(labelText, bbox.x + padding, bbox.y - padding);
-    });
-  }, [detections, showOverlay]);
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y - textHeight - 5, textMetrics.width + 10, textHeight);
 
-  // Process frames
-  const processFrame = useCallback(async () => {
-    if (!isCameraReady || isProcessing) return;
+        // Draw label text
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, x + 5, y - 5);
 
-    const frameBase64 = captureFrame();
-    if (!frameBase64) return;
+        // Draw emotion if available
+        if (det.emotion) {
+          const emotionLabel = `${det.emotion} ${(
+            (det.emotion_confidence || 0) * 100
+          ).toFixed(1)}%`;
+          const [er, eg, eb] = getEmotionColor(det.emotion);
+          const emotionColor = `rgb(${er}, ${eg}, ${eb})`;
 
-    // Remove data URL prefix for API
-    const base64Data = frameBase64.split(',')[1];
-    
-    const newDetections = await detectFrame(base64Data);
-    
-    if (onDetection && newDetections.length > 0) {
-      onDetection(newDetections);
-    }
-  }, [isCameraReady, isProcessing, captureFrame, detectFrame, onDetection]);
+          ctx.font = `bold ${fontSize}px Arial`;
+          const emotionMetrics = ctx.measureText(emotionLabel);
 
-  // Render overlay
-  const renderOverlay = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current || !showOverlay) return;
+          ctx.fillStyle = emotionColor;
+          ctx.fillRect(
+            x,
+            y + height + 5,
+            emotionMetrics.width + 10,
+            textHeight
+          );
 
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-
-    if (!ctx) return;
-
-    // Sync canvas size
-    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
-    }
-
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Draw detections
-    drawDetections(ctx, canvas.width, canvas.height);
-  }, [drawDetections, showOverlay]);
-
-  // Start/stop camera based on isActive
-  useEffect(() => {
-    if (isActive) {
-      startCamera();
-    } else {
-      stopCamera();
-      clearDetections();
-    }
-
-    return () => {
-      stopCamera();
-    };
-  }, [isActive, startCamera, stopCamera, clearDetections]);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(emotionLabel, x + 5, y + height + textHeight);
+        }
+      });
+    },
+    []
+  );
 
   // Detection loop
   useEffect(() => {
-    if (isActive && isCameraReady) {
-      intervalRef.current = setInterval(() => {
-        processFrame();
-      }, detectionInterval);
-    }
+    if (!cameraActive || !canvasRef.current) return;
 
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+    setIsDetecting(true);
+    const detectionTimer = setInterval(async () => {
+      const frameBase64 = captureFrame();
+      if (!frameBase64) return;
+
+      // Remove data URL prefix for API
+      const base64Data = frameBase64.includes(',')
+        ? frameBase64.split(',')[1]
+        : frameBase64;
+
+      const newDetections = await detectFrame(base64Data);
+      drawDetections(canvasRef.current!, newDetections);
+
+      if (onDetectionsUpdate) {
+        onDetectionsUpdate(newDetections);
       }
-    };
-  }, [isActive, isCameraReady, detectionInterval, processFrame]);
+    }, detectionInterval);
 
-  // Render overlay when detections change
-  useEffect(() => {
-    if (isCameraReady) {
-      renderOverlay();
-    }
-  }, [detections, isCameraReady, renderOverlay]);
-
-  // Handle camera error
-  if (cameraError) {
-    return (
-      <div className="flex items-center justify-center w-full h-64 bg-gray-100 rounded-lg">
-        <div className="text-center text-red-500">
-          <p className="font-semibold">Camera Error</p>
-          <p className="text-sm">{cameraError}</p>
-        </div>
-      </div>
-    );
-  }
+    return () => clearInterval(detectionTimer);
+  }, [cameraActive, detectFrame, drawDetections, detectionInterval, onDetectionsUpdate]);
 
   return (
-    <div className="relative w-full rounded-lg overflow-hidden bg-black">
-      {/* Video element */}
-      <video
-        ref={videoRef}
-        className="w-full h-auto"
-        playsInline
-        muted
-        style={{ display: isCameraReady ? 'block' : 'none' }}
-      />
+    <div className="w-full bg-gray-900 rounded-lg overflow-hidden">
+      <div className="relative">
+        {/* Video element */}
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="w-full h-auto block"
+          style={{ display: cameraActive ? 'block' : 'none' }}
+        />
 
-      {/* Overlay canvas */}
-      <canvas
-        ref={canvasRef}
-        className="absolute top-0 left-0 w-full h-full pointer-events-none"
-        style={{ display: isCameraReady ? 'block' : 'none' }}
-      />
+        {/* Canvas overlay for detections */}
+        <canvas
+          ref={canvasRef}
+          className="absolute top-0 left-0 w-full h-full"
+          style={{ display: cameraActive ? 'block' : 'none' }}
+        />
 
-      {/* Loading state */}
-      {!isCameraReady && isActive && (
-        <div className="flex items-center justify-center h-64 bg-gray-900">
-          <div className="text-white text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2" />
-            <p>Starting camera...</p>
+        {/* Error message */}
+        {error && (
+          <div className="absolute top-4 left-4 bg-red-500 text-white p-3 rounded">
+            {error}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Stats overlay */}
-      {showStats && isCameraReady && (
-        <div className="absolute top-2 left-2 bg-black/70 text-white px-3 py-2 rounded-md text-sm">
-          <div className="flex gap-4">
-            <span>FPS: {stats.fps}</span>
-            <span>Objects: {detections.length}</span>
-            <span className={isProcessing ? 'text-yellow-400' : 'text-green-400'}>
-              {isProcessing ? 'Processing...' : 'Ready'}
-            </span>
+        {/* Stats overlay */}
+        {showStats && cameraActive && (
+          <div className="absolute top-4 right-4 bg-black/70 text-white p-3 rounded font-mono text-sm">
+            <div>FPS: {stats.fps}</div>
+            <div>Processing: {stats.processingTime.toFixed(0)}ms</div>
+            <div>Detections: {detections.length}</div>
+            {includeEmotions && (
+              <div>With Emotions: {detections.filter((d) => d.emotion).length}</div>
+            )}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Error display */}
-      {error && (
-        <div className="absolute bottom-2 left-2 bg-red-500/80 text-white px-3 py-2 rounded-md text-sm">
-          Error: {error}
+        {/* Controls */}
+        <div className="absolute bottom-4 left-4 right-4 flex gap-3">
+          <button
+            onClick={cameraActive ? stopCamera : startCamera}
+            className={`px-4 py-2 rounded font-semibold text-white transition ${
+              cameraActive
+                ? 'bg-red-500 hover:bg-red-600'
+                : 'bg-blue-500 hover:bg-blue-600'
+            }`}
+          >
+            {cameraActive ? 'Stop Camera' : 'Start Camera'}
+          </button>
+
+          {includeEmotions && (
+            <div className="flex-1 text-right text-white text-sm bg-black/50 px-3 py-2 rounded">
+              Facial Emotion Recognition: <span className="text-green-400">ON</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Detections list */}
+      {detections.length > 0 && (
+        <div className="p-4 bg-gray-800 text-white text-sm max-h-40 overflow-y-auto">
+          <h3 className="font-semibold mb-2">
+            Detections ({detections.length}):
+          </h3>
+          <div className="space-y-1">
+            {detections.map((det, idx) => (
+              <div
+                key={idx}
+                className="flex justify-between items-center text-xs"
+              >
+                <span>
+                  {det.label}
+                  {det.emotion && ` - ${det.emotion}`}
+                </span>
+                <span className="text-gray-400">
+                  {(det.confidence * 100).toFixed(1)}%
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
   );
-}
+};
+
+export default YOLOVideo;
