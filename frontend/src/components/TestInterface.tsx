@@ -151,7 +151,7 @@ const { detectFrame } = useYOLODetector({
         ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
         const base64 = tempCanvas.toDataURL("image/jpeg", 0.7).split(",")[1];
         await detectFrame(base64);
-      }, 300);
+      }, 1000);
     }
 
     return () => {
