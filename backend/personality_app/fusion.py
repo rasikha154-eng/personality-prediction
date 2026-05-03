@@ -3,7 +3,6 @@ import numpy as np
 
 
 def load_adaptive_weights() -> dict:
-    """Adaptive weights load karo — nahi mila toh default use karo"""
     try:
         import os, sys
         app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -19,16 +18,11 @@ def load_adaptive_weights() -> dict:
 
 
 def fuse_all(text_result: Dict[str, Any], voice_result: Dict[str, Any], face_result: Dict[str, Any]) -> Dict[str, Any]:
-    print("🔬 FUSION DEBUG: Starting multimodal fusion...")
-    print(f"   Text result:  {text_result}")
-    print(f"   Voice result: {voice_result}")
-    print(f"   Face result:  {face_result}")
+    print("🔬 FUSION: Starting multimodal fusion...")
 
     big_five_traits = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism']
-
-    # ✅ Adaptive weights use karo
-    weights = load_adaptive_weights()
-    print(f"🎯 Using fusion weights: {weights}")
+    weights         = load_adaptive_weights()
+    print(f"🎯 Using weights: {weights}")
 
     fused_results = {}
 
@@ -36,35 +30,31 @@ def fuse_all(text_result: Dict[str, Any], voice_result: Dict[str, Any], face_res
         trait_scores  = []
         trait_weights = []
 
-        print(f"\n🧩 Processing trait: {trait}")
-
         if text_result and trait in text_result and isinstance(text_result[trait], (int, float)):
             score = text_result[trait] / 100.0 if text_result[trait] > 1 else text_result[trait]
             trait_scores.append(score)
             trait_weights.append(weights['text'])
-            print(f"   📝 Text  {trait}: {score:.3f} (weight: {weights['text']})")
+            print(f"   📝 Text  {trait}: {score:.3f}")
 
         if voice_result and trait in voice_result and isinstance(voice_result[trait], (int, float)):
             score = voice_result[trait] / 100.0 if voice_result[trait] > 1 else voice_result[trait]
             trait_scores.append(score)
             trait_weights.append(weights['voice'])
-            print(f"   🎙️ Voice {trait}: {score:.3f} (weight: {weights['voice']})")
+            print(f"   🎙️ Voice {trait}: {score:.3f}")
 
         if face_result and trait in face_result and isinstance(face_result[trait], (int, float)):
             score = face_result[trait] / 100.0 if face_result[trait] > 1 else face_result[trait]
             trait_scores.append(score)
             trait_weights.append(weights['face'])
-            print(f"   📷 Face  {trait}: {score:.3f} (weight: {weights['face']})")
+            print(f"   📷 Face  {trait}: {score:.3f}")
 
         if trait_scores:
             total_w      = sum(trait_weights)
             norm_weights = [w / total_w for w in trait_weights]
             weighted_avg = sum(s * w for s, w in zip(trait_scores, norm_weights))
             fused_results[trait] = round(weighted_avg, 3)
-            print(f"   ⚖️ {trait}: scores={trait_scores} weights={norm_weights} → {weighted_avg:.3f}")
         else:
             fused_results[trait] = 0.5
-            print(f"   ⚠️ No data for {trait}, using default: 0.5")
 
     fused_results['modality_scores'] = {
         'text':  text_result  if text_result  else None,
@@ -78,45 +68,28 @@ def fuse_all(text_result: Dict[str, Any], voice_result: Dict[str, Any], face_res
     fused_results['fusion_method']   = 'adaptive_weighted_average'
     fused_results['weights_used']    = weights
 
-    print(f"\n🎯 FUSION COMPLETE!")
-    print(f"   Final: {fused_results}")
-    print(f"   Modalities used: {modalities_available}")
-    print(f"   Confidence: {fused_results['confidence']:.3f}")
-
+    print(f"✅ Fusion complete — modalities: {modalities_available}, confidence: {fused_results['confidence']:.2f}")
     return fused_results
 
 
 def average_face_expressions(face_results: Dict[str, Any]) -> Dict[str, Any]:
-    print(f"📊 AVERAGING FACE EXPRESSIONS:")
-    print(f"   Input: {face_results}")
-
     if not face_results:
-        print("   ❌ No face results")
         return {}
 
     big_five_traits  = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism']
     averaged_results = {}
 
     for trait in big_five_traits:
-        trait_values = []
-        print(f"   🧩 Processing: {trait}")
-
+        values = []
         for expr_name, expr_result in face_results.items():
             if isinstance(expr_result, dict) and trait in expr_result:
-                value = expr_result[trait]
-                if isinstance(value, (int, float)):
-                    trait_values.append(value)
-                    print(f"      {expr_name}: {value}")
+                val = expr_result[trait]
+                if isinstance(val, (int, float)):
+                    values.append(val)
 
-        if trait_values:
-            avg = round(np.mean(trait_values), 3)
-            averaged_results[trait] = avg
-            print(f"   ✅ {trait}: {trait_values} → {avg}")
-        else:
-            averaged_results[trait] = 0.5
-            print(f"   ⚠️ {trait}: no values, default 0.5")
+        averaged_results[trait] = round(float(np.mean(values)), 3) if values else 0.5
 
-    # Dominant emotion dhundo
+    # Dominant emotion
     best_emotion    = None
     best_confidence = 0.0
     best_expression = None
@@ -131,13 +104,12 @@ def average_face_expressions(face_results: Dict[str, Any]) -> Dict[str, Any]:
                 best_expression = expr_name
 
     if best_emotion:
-        averaged_results['dominant_emotion']   = best_emotion
-        averaged_results['emotion_confidence'] = round(best_confidence, 3)
-        averaged_results['dominant_expression']= best_expression
-        print(f"   👑 Dominant: {best_emotion} ({best_confidence:.3f}) from {best_expression}")
+        averaged_results['dominant_emotion']    = best_emotion
+        averaged_results['emotion_confidence']  = round(best_confidence, 3)
+        averaged_results['dominant_expression'] = best_expression
 
     averaged_results['expressions_analyzed'] = list(face_results.keys())
     averaged_results['total_expressions']    = len(face_results)
 
-    print(f"   🎯 Final averaged: {averaged_results}")
+    print(f"✅ Face expressions averaged: {averaged_results}")
     return averaged_results

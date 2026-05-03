@@ -1,0 +1,9 @@
+{
+  "total_feedback": 7,
+  "accurate_count": 5,
+  "weights": {
+    "text": 0.283,
+    "voice": 0.147,
+    "face": 0.57
+  }
+}

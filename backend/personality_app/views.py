@@ -1,252 +1,243 @@
-from django.shortcuts import render
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.authtoken.models import Token
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth.models import User
-from django.contrib.auth import authenticate
-from .models import TestResult
-from .serializers import UserSerializer, TestResultSerializer
-from .models.predict_bigfive import predict_text_traits
-from .models.voice_model import predict_voice_traits
-from .models.facetest import predict_face_traits
-from .models.fusion import fuse_all, average_face_expressions
-import uuid
 import json
-import os
+import traceback
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 
-def _with_cors(resp: Response) -> Response:
-    resp["Access-Control-Allow-Origin"] = "*"
-    resp["Access-Control-Allow-Headers"] = "Content-Type"
-    resp["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-    return resp
+# ── Adaptive weights ───────────────────────────────────────────────────────────
+try:
+    from .adaptive_weights import adjust_weights, get_feedback_stats, record_feedback
+    ADAPTIVE_WEIGHTS_AVAILABLE = True
+except Exception as e:
+    print(f"⚠️ Adaptive weights not available: {e}")
+    ADAPTIVE_WEIGHTS_AVAILABLE = False
 
 
-@api_view(['POST', 'OPTIONS'])
+# ── Model imports ──────────────────────────────────────────────────────────────
+try:
+    from .personality_analyzer import PersonalityAnalyzer
+    analyzer = PersonalityAnalyzer()
+    ANALYZER_AVAILABLE = True
+except Exception as e:
+    print(f"⚠️ PersonalityAnalyzer not available: {e}")
+    ANALYZER_AVAILABLE = False
+
+try:
+    from .face_model import predict_face_traits
+    FACE_MODEL_AVAILABLE = True
+except Exception as e:
+    print(f"⚠️ Face model not available: {e}")
+    FACE_MODEL_AVAILABLE = False
+
+try:
+    from .voice_model import predict_voice_traits
+    VOICE_MODEL_AVAILABLE = True
+except Exception as e:
+    print(f"⚠️ Voice model not available: {e}")
+    VOICE_MODEL_AVAILABLE = False
+
+try:
+    from .fusion import fuse_all, average_face_expressions
+    FUSION_AVAILABLE = True
+except Exception as e:
+    print(f"⚠️ Fusion not available: {e}")
+    FUSION_AVAILABLE = False
+
+
+# ── Health check ───────────────────────────────────────────────────────────────
+@csrf_exempt
+def health_check(request):
+    return JsonResponse({
+        "status":    "ok",
+        "analyzer":  ANALYZER_AVAILABLE,
+        "face_model":FACE_MODEL_AVAILABLE,
+        "voice_model":VOICE_MODEL_AVAILABLE,
+        "fusion":    FUSION_AVAILABLE,
+        "adaptive":  ADAPTIVE_WEIGHTS_AVAILABLE,
+    })
+
+
+# ── Text prediction ────────────────────────────────────────────────────────────
+@csrf_exempt
 def predict_personality(request):
-    if request.method == 'OPTIONS':
-        return _with_cors(Response(status=status.HTTP_204_NO_CONTENT))
-
-    text = request.data.get('text')
-    audio = request.FILES.get('voice')
-    image = request.FILES.get('face')
-
-    results = {}
-
-    if text:
-        results['text'] = predict_text_traits(text)
-    if audio:
-        results['voice'] = predict_voice_traits(audio)
-    if image:
-        results['face'] = predict_face_traits(image)
-
-    if not results:
-        return _with_cors(Response({
-            'error': 'No valid inputs provided. Send any of: text, voice (file), face (file).'
-        }, status=status.HTTP_400_BAD_REQUEST))
-
-    # If all three modalities are present, also include fused output
-    if all(k in results for k in ('text', 'voice', 'face')):
-        # Average face expressions first, then fuse with other modalities
-        averaged_face = average_face_expressions(results['face'])
-        results['fusion'] = fuse_all(results['text'], results['voice'], averaged_face)
-
-    return _with_cors(Response(results))
-
-
-@api_view(['POST', 'OPTIONS'])
-def predict_face_only(request):
-    if request.method == 'OPTIONS':
-        return _with_cors(Response(status=status.HTTP_204_NO_CONTENT))
-
-    image = request.FILES.get('face')
-    if not image:
-        return _with_cors(Response({'error': 'No face image provided'}, status=status.HTTP_400_BAD_REQUEST))
-
-    face_result = predict_face_traits(image)
-    return _with_cors(Response(face_result))
-
-
-@api_view(['POST', 'OPTIONS'])
-def predict_voice_only(request):
-    if request.method == 'OPTIONS':
-        return _with_cors(Response(status=status.HTTP_204_NO_CONTENT))
-
-    audio = request.FILES.get('voice')
-    if not audio:
-        return _with_cors(Response({'error': 'No voice file provided'}, status=status.HTTP_400_BAD_REQUEST))
-
-    print(f"Received audio file: {audio.name}")  # Debugging line
-    voice_result = predict_voice_traits(audio)
-    return _with_cors(Response(voice_result))
-
-
-# ===== MULTIMODAL PREDICTION ENDPOINT FOR FRONTEND =====
-
-@api_view(['POST', 'OPTIONS'])
-def predict_multimodal(request):
-    """Enhanced multimodal prediction endpoint for frontend integration"""
-    if request.method == 'OPTIONS':
-        return _with_cors(Response(status=status.HTTP_204_NO_CONTENT))
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=405)
 
     try:
-        text = request.data.get('text')
-        audio = request.FILES.get('voice') or request.FILES.get('audio')
-        image = request.FILES.get('face') or request.FILES.get('image')
-        facial_results_json = request.data.get('facial_results')
-        voice_results_json = request.data.get('voice_results')
-        
-        results = {}
+        body = json.loads(request.body)
+        text = body.get("text", "").strip()
 
-        # Text analysis
-        if text and text.strip():
-            print(f"🔤 Processing text: '{text[:50]}...'")
-            text_result = predict_text_traits(text)
-            print(f"📝 Text analysis result: {text_result}")
-            if 'error' not in text_result:
-                results['text'] = text_result
+        if not text:
+            return JsonResponse({"error": "No text provided"}, status=400)
 
-        # Voice analysis - use existing results if provided, otherwise analyze new audio
+        if not ANALYZER_AVAILABLE:
+            return JsonResponse({"error": "Analyzer not available"}, status=503)
+
+        result = analyzer.analyze_text(text)
+        return JsonResponse(result)
+
+    except Exception as e:
+        traceback.print_exc()
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+# ── Face prediction ────────────────────────────────────────────────────────────
+@csrf_exempt
+def predict_face_only(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=405)
+
+    try:
+        image_file = request.FILES.get("face")
+        if not image_file:
+            return JsonResponse({"error": "No face image provided"}, status=400)
+
+        if not FACE_MODEL_AVAILABLE:
+            return JsonResponse({"error": "Face model not available"}, status=503)
+
+        result = predict_face_traits(image_file)
+        return JsonResponse(result)
+
+    except Exception as e:
+        traceback.print_exc()
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+# ── Voice prediction ───────────────────────────────────────────────────────────
+@csrf_exempt
+def predict_voice_only(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=405)
+
+    try:
+        voice_file = request.FILES.get("voice")
+        if not voice_file:
+            return JsonResponse({"error": "No voice file provided"}, status=400)
+
+        if not VOICE_MODEL_AVAILABLE:
+            return JsonResponse({"error": "Voice model not available"}, status=503)
+
+        result = predict_voice_traits(voice_file)
+        return JsonResponse(result)
+
+    except Exception as e:
+        traceback.print_exc()
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+# ── Multimodal fusion ──────────────────────────────────────────────────────────
+@csrf_exempt
+def predict_multimodal(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=405)
+
+    try:
+        text_result   = None
+        voice_result  = None
+        face_result   = None
+
+        # ── Text ──────────────────────────────────────────────────────────────
+        text = request.POST.get("text", "").strip()
+        if text and ANALYZER_AVAILABLE:
+            try:
+                text_result = analyzer.analyze_text(text)
+                print(f"✅ Text analysis: {text_result}")
+            except Exception as e:
+                print(f"⚠️ Text analysis failed: {e}")
+
+        # ── Voice ─────────────────────────────────────────────────────────────
+        voice_results_json = request.POST.get("voice_results")
         if voice_results_json:
             try:
-                import json
-                voice_results = json.loads(voice_results_json)
-                print(f"🎙️ Using existing voice results: {voice_results}")
-                results['voice'] = voice_results
+                voice_result = json.loads(voice_results_json)
+                print(f"✅ Voice results (pre-analyzed): {voice_result}")
             except Exception as e:
-                print(f"❌ Error parsing voice results JSON: {e}")
-        elif audio:
-            print(f"🎙️ Processing voice file: {audio.name}, size: {audio.size}")
-            voice_result = predict_voice_traits(audio)
-            print(f"🔊 Voice analysis result: {voice_result}")
-            if 'error' not in voice_result:
-                results['voice'] = voice_result
+                print(f"⚠️ Voice JSON parse failed: {e}")
 
-        # Face analysis - use existing results if provided, otherwise analyze new image
+        if not voice_result:
+            voice_file = request.FILES.get("voice")
+            if voice_file and VOICE_MODEL_AVAILABLE:
+                try:
+                    voice_result = predict_voice_traits(voice_file)
+                    print(f"✅ Voice analysis: {voice_result}")
+                except Exception as e:
+                    print(f"⚠️ Voice analysis failed: {e}")
+
+        # ── Face ──────────────────────────────────────────────────────────────
+        facial_results_json = request.POST.get("facial_results")
         if facial_results_json:
             try:
-                import json
-                facial_results = json.loads(facial_results_json)
-                print(f"📊 Using existing facial results: {facial_results}")
-                results['face'] = facial_results
+                facial_data = json.loads(facial_results_json)
+                print(f"✅ Facial results (pre-analyzed): {facial_data}")
+                if FUSION_AVAILABLE:
+                    face_result = average_face_expressions(facial_data)
+                else:
+                    face_result = facial_data
             except Exception as e:
-                print(f"❌ Error parsing facial results JSON: {e}")
-        elif image:
-            print(f"📷 Processing face image: {image.name}, size: {image.size}")
-            face_result = predict_face_traits(image)
-            print(f"😊 Face analysis result: {face_result}")
-            if 'error' not in face_result:
-                results['face'] = face_result
+                print(f"⚠️ Facial JSON parse failed: {e}")
 
-        if not results:
-            return _with_cors(Response({
-                'error': 'No valid inputs provided. Send any of: text, voice (file), face (file).'
-            }, status=status.HTTP_400_BAD_REQUEST))
+        if not face_result:
+            face_file = request.FILES.get("face")
+            if face_file and FACE_MODEL_AVAILABLE:
+                try:
+                    face_result = predict_face_traits(face_file)
+                    print(f"✅ Face analysis: {face_result}")
+                except Exception as e:
+                    print(f"⚠️ Face analysis failed: {e}")
 
-        # Multimodal fusion if we have multiple modalities
-        if len(results) >= 2:
-            print("🔍 FUSION INPUT DEBUG:")
-            print(f"   Text result: {results.get('text', {})}")
-            print(f"   Voice result: {results.get('voice', {})}")
-            print(f"   Raw face result: {results.get('face', {})}")
-            
-            # Average face expressions if available
-            face_averaged = results.get('face', {})
-            if isinstance(face_averaged, dict) and 'expressions' in face_averaged:
-                print("📊 Face has 'expressions' - using average_face_expressions")
-                face_averaged = average_face_expressions(face_averaged['expressions'])
-            elif isinstance(face_averaged, dict) and any(key in ['neutral', 'smile', 'sad', 'surprised', 'happy', 'angry'] for key in face_averaged.keys()):
-                print("📊 Face has expression keys - using average_face_expressions on direct results")
-                face_averaged = average_face_expressions(face_averaged)
-            else:
-                print("📷 Face is single result - using as-is")
-            
-            print(f"   Final face for fusion: {face_averaged}")
-            
-            fusion_result = fuse_all(
-                results.get('text', {}),
-                results.get('voice', {}), 
-                face_averaged
-            )
-            results['fusion'] = fusion_result
+        # ── Fusion ────────────────────────────────────────────────────────────
+        if not any([text_result, voice_result, face_result]):
+            return JsonResponse({"error": "No valid data for analysis"}, status=400)
 
-        return _with_cors(Response(results))
-        
-    except Exception as e:
-        return _with_cors(Response(
-            {'error': f'Prediction failed: {str(e)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        ))
-
-
-@api_view(['GET'])
-def health_check(request):
-    """Simple health check endpoint"""
-    return _with_cors(Response({
-        'status': 'healthy',
-        'service': 'personality-prediction-backend',
-        'version': '1.0.0',
-        'models_available': {
-            'text': 'bigfive-regression-model',
-            'voice': 'SpeechEmotionModel',
-            'face': '_mini_XCEPTION'
-        }
-    }))
-
-@api_view(['POST', 'OPTIONS'])
-def submit_feedback(request):
-    if request.method == 'OPTIONS':
-        return _with_cors(Response(status=status.HTTP_204_NO_CONTENT))
-    
-    try:
-        feedback = request.data.get('feedback')  # 'accurate' ya 'inaccurate'
-        modality = request.data.get('modality')  # 'text', 'voice', 'face', 'fusion'
-        results  = request.data.get('results')   # actual scores
-        
-        # Simple file mein save karo
-        import json
-        from datetime import datetime
-        
-        feedback_path = os.path.join(
-            os.path.dirname(__file__), 
-            'models', 'feedback_log.json'
-        )
-        
-        # Existing feedback load karo
-        if os.path.exists(feedback_path):
-            with open(feedback_path, 'r') as f:
-                all_feedback = json.load(f)
+        if FUSION_AVAILABLE:
+            fusion = fuse_all(text_result, voice_result, face_result)
         else:
-            all_feedback = []
-        
-        # Naya entry add karo
-        all_feedback.append({
-            "timestamp": datetime.now().isoformat(),
-            "feedback":  feedback,
-            "modality":  modality,
-            "results":   results,
+            fusion = text_result or voice_result or face_result
+            fusion["fusion_method"] = "single_modality"
+
+        return JsonResponse({
+            "text":   text_result,
+            "voice":  voice_result,
+            "face":   face_result,
+            "fusion": fusion,
         })
-        
-        # Save karo
-        with open(feedback_path, 'w') as f:
-            json.dump(all_feedback, f, indent=2)
-        
-        # Accuracy stats calculate karo
-        total    = len(all_feedback)
-        accurate = sum(1 for f in all_feedback if f['feedback'] == 'accurate')
-        accuracy = round((accurate / total) * 100, 1) if total > 0 else 0
-        
-        return _with_cors(Response({
-            'message': 'Feedback saved',
-            'total_feedback': total,
-            'accuracy_rate': accuracy
-        }))
-        
+
     except Exception as e:
-        return _with_cors(Response(
-            {'error': str(e)}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        ))
+        traceback.print_exc()
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+# ── Feedback ───────────────────────────────────────────────────────────────────
+@csrf_exempt
+def submit_feedback(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=405)
+
+    try:
+        body        = json.loads(request.body)
+        feedback    = body.get("feedback", "")
+        results     = body.get("results", {})
+        is_accurate = feedback == "accurate"
+
+        if ADAPTIVE_WEIGHTS_AVAILABLE:
+            record_feedback(is_accurate)
+            new_weights = adjust_weights(is_accurate, results)
+            stats       = get_feedback_stats()
+        else:
+            new_weights = {'text': 0.3, 'voice': 0.2, 'face': 0.5}
+            stats       = {"total_feedback": 0, "accuracy_rate": 0}
+
+        print(f"✅ Feedback received: {'accurate' if is_accurate else 'inaccurate'}")
+        print(f"   New weights: {new_weights}")
+
+        return JsonResponse({
+            "success":        True,
+            "message":        "Shukriya! Feedback recorded.",
+            "new_weights":    new_weights,
+            "accuracy_rate":  stats["accuracy_rate"],
+            "total_feedback": stats["total_feedback"],
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return JsonResponse({"error": str(e)}, status=500)
