@@ -1,9 +1,9 @@
 {
-  "total_feedback": 7,
-  "accurate_count": 5,
+  "total_feedback": 10,
+  "accurate_count": 7,
   "weights": {
-    "text": 0.283,
-    "voice": 0.147,
-    "face": 0.57
+    "text": 0.277,
+    "voice": 0.125,
+    "face": 0.598
   }
 }

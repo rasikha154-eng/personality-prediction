@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Brain, Search, User, Menu, X } from "lucide-react";
+import { Brain, Search, User, Menu, X, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import AuthModal from "@/components/AuthModal";
 import SearchModal from "@/components/SearchModal";
 
@@ -13,8 +14,11 @@ const Navigation = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalTab, setAuthModalTab] = useState<"login" | "signup">("login");
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const { toast } = useToast();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, isAuthenticated, logout } = useAuth();
 
   const handleLogin = () => {
     setAuthModalTab("login");
@@ -33,6 +37,20 @@ const Navigation = () => {
 
   const handleSearchIconClick = () => {
     setIsSearchModalOpen(true);
+  };
+
+  const getInitials = (username: string): string => {
+    return username.charAt(0).toUpperCase();
+  };
+
+  const handleLogout = () => {
+    logout();
+    setIsUserMenuOpen(false);
+    navigate("/");
+    toast({
+      title: "Logged Out",
+      description: "You have been successfully logged out.",
+    });
   };
 
   const isActive = (path: string) => {
@@ -104,19 +122,49 @@ const Navigation = () => {
               <Search className="h-5 w-5" />
             </Button>
 
-            <Button
-              onClick={handleLogin}
-              variant="outline"
-              className="border-accent text-accent hover:bg-accent hover:text-[#1B1F3B]"
-            >
-              Login
-            </Button>
-            <Button
-              onClick={handleSignUp}
-              className="bg-accent text-[#1B1F3B] hover:bg-accent/90"
-            >
-              Sign Up
-            </Button>
+            {isAuthenticated && user ? (
+              <div className="relative">
+                <button
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className="flex items-center justify-center w-10 h-10 rounded-full bg-accent text-[#1B1F3B] font-bold text-lg hover:bg-accent/90 transition-colors"
+                  title={user.username}
+                >
+                  {getInitials(user.username)}
+                </button>
+
+                {isUserMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-[#2C2F4A] border border-accent/30 rounded-lg shadow-lg overflow-hidden">
+                    <div className="px-4 py-3 border-b border-accent/20">
+                      <p className="text-white font-semibold">{user.username}</p>
+                      <p className="text-white/70 text-sm">{user.email}</p>
+                    </div>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full px-4 py-3 text-white hover:bg-accent/10 flex items-center gap-2 transition-colors"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <Button
+                  onClick={handleLogin}
+                  variant="outline"
+                  className="border-accent text-accent hover:bg-accent hover:text-[#1B1F3B]"
+                >
+                  Login
+                </Button>
+                <Button
+                  onClick={handleSignUp}
+                  className="bg-accent text-[#1B1F3B] hover:bg-accent/90"
+                >
+                  Sign Up
+                </Button>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -183,20 +231,38 @@ const Navigation = () => {
               >
                 Contact
               </Link>
-              <div className="flex space-x-2 pt-4">
-                <Button
-                  onClick={handleLogin}
-                  variant="outline"
-                  className="border-accent text-accent hover:bg-accent hover:text-[#1B1F3B]"
-                >
-                  Login
-                </Button>
-                <Button
-                  onClick={handleSignUp}
-                  className="bg-accent text-[#1B1F3B] hover:bg-accent/90"
-                >
-                  Sign Up
-                </Button>
+              <div className="pt-4 border-t border-white/10">
+                {isAuthenticated && user ? (
+                  <div>
+                    <div className="px-2 py-3 mb-3">
+                      <p className="text-white font-semibold">{user.username}</p>
+                      <p className="text-white/70 text-sm">{user.email}</p>
+                    </div>
+                    <Button
+                      onClick={handleLogout}
+                      className="w-full bg-red-600 text-white hover:bg-red-700 flex items-center justify-center gap-2"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex space-x-2">
+                    <Button
+                      onClick={handleLogin}
+                      variant="outline"
+                      className="border-accent text-accent hover:bg-accent hover:text-[#1B1F3B]"
+                    >
+                      Login
+                    </Button>
+                    <Button
+                      onClick={handleSignUp}
+                      className="bg-accent text-[#1B1F3B] hover:bg-accent/90"
+                    >
+                      Sign Up
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </div>

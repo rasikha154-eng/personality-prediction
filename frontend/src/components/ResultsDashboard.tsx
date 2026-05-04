@@ -440,6 +440,14 @@ const ResultsDashboard = () => {
         doc.text("Detailed Analysis Results", 20, yPos);
         yPos += 15;
         
+        // Helper function to format percentage values
+        const formatPercentage = (value: any): string => {
+          if (typeof value === 'number') {
+            return String(Math.round(value));
+          }
+          return String(value);
+        };
+        
         // Text Results
         if (textResults && Object.keys(textResults).length > 0) {
           doc.setFontSize(12);
@@ -452,7 +460,7 @@ const ResultsDashboard = () => {
           const textTraits = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'];
           textTraits.forEach(trait => {
             if (textResults[trait] !== undefined) {
-              doc.text(`${trait}: ${textResults[trait]}%`, 25, yPos);
+              doc.text(`${trait}: ${formatPercentage(textResults[trait])}%`, 25, yPos);
               yPos += 6;
             }
           });
@@ -471,7 +479,7 @@ const ResultsDashboard = () => {
           const voiceTraits = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'];
           voiceTraits.forEach(trait => {
             if (voiceResults[trait] !== undefined) {
-              doc.text(`${trait}: ${voiceResults[trait]}%`, 25, yPos);
+              doc.text(`${trait}: ${formatPercentage(voiceResults[trait])}%`, 25, yPos);
               yPos += 6;
             }
           });
@@ -490,7 +498,7 @@ const ResultsDashboard = () => {
           const faceTraits = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'];
           faceTraits.forEach(trait => {
             if (facialResults[trait] !== undefined) {
-              doc.text(`${trait}: ${facialResults[trait]}%`, 25, yPos);
+              doc.text(`${trait}: ${formatPercentage(facialResults[trait])}%`, 25, yPos);
               yPos += 6;
             }
           });
@@ -509,7 +517,7 @@ const ResultsDashboard = () => {
           const fusionTraits = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'];
           fusionTraits.forEach(trait => {
             if (fusionResults[trait] !== undefined) {
-              doc.text(`${trait}: ${fusionResults[trait]}%`, 25, yPos);
+              doc.text(`${trait}: ${formatPercentage(fusionResults[trait])}%`, 25, yPos);
               yPos += 6;
             }
           });

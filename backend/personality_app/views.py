@@ -23,7 +23,7 @@ except Exception as e:
     ANALYZER_AVAILABLE = False
 
 try:
-    from .face_model import predict_face_traits
+    from .models.facetest import predict_face_traits
     FACE_MODEL_AVAILABLE = True
 except Exception as e:
     print(f"⚠️ Face model not available: {e}")
@@ -195,11 +195,35 @@ def predict_multimodal(request):
             fusion = text_result or voice_result or face_result
             fusion["fusion_method"] = "single_modality"
 
+        # ── Normalize all results to 0-100 scale ───────────────────────────────
+        def normalize_results(results):
+            """Convert decimal (0-1) or percentage (0-100) results to 0-100 scale"""
+            if not results:
+                return results
+            normalized = {}
+            big_five = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism']
+            for key, value in results.items():
+                if key in big_five and isinstance(value, (int, float)):
+                    # If value is 0-1, convert to 0-100; if already 0-100, keep as is
+                    if 0 <= value <= 1:
+                        normalized[key] = round(value * 100, 2)
+                    else:
+                        normalized[key] = round(value, 2)
+                else:
+                    normalized[key] = value
+            return normalized
+
+        # Normalize all results
+        text_result_normalized = normalize_results(text_result)
+        voice_result_normalized = normalize_results(voice_result)
+        face_result_normalized = normalize_results(face_result)
+        fusion_normalized = normalize_results(fusion)
+
         return JsonResponse({
-            "text":   text_result,
-            "voice":  voice_result,
-            "face":   face_result,
-            "fusion": fusion,
+            "text":   text_result_normalized,
+            "voice":  voice_result_normalized,
+            "face":   face_result_normalized,
+            "fusion": fusion_normalized,
         })
 
     except Exception as e:
